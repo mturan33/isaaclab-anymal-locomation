@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="PYTHON_MODULE" version="4">
+  <component name="NewModuleRootManager">
+    <content url="file://$MODULE_DIR$/../../../../isaaclab" />
+    <content url="file://$MODULE_DIR$/../../../../isaaclab_assets" />
+    <content url="file://$MODULE_DIR$/../../../../isaaclab_rl" />
+    <content url="file://$MODULE_DIR$" />
+    <orderEntry type="jdk" jdkName="env_isaaclab" jdkType="Python SDK" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+  <component name="PyDocumentationSettings">
+    <option name="format" value="PLAIN" />
+    <option name="myDocStringFormat" value="Plain" />
+  </component>
+</module>
