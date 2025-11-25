@@ -1,4 +1,4 @@
-# Template for Isaac Lab Projects
+# Isaac Lab Legged locomotion with Anymal C
 
 ## Overview
 

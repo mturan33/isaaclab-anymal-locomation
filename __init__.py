@@ -1,33 +1,56 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers
+# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
+#
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""My Anymal quadruped locomotion environment."""
+"""
+Ant locomotion environment.
+"""
 
 import gymnasium as gym
+
 from . import agents
-from .my_anymal_env_cfg import MyAnymalFlatEnvCfg, MyAnymalRoughEnvCfg
 
 ##
-# Register Gym environments
+# Register Gym environments.
 ##
 
 gym.register(
     id="Isaac-MyAnymal-Flat-v0",
-    entry_point="isaaclab_tasks.direct.my_anymal_quadruped.my_anymal_env:MyAnymalEnv",
+    entry_point="isaaclab_tasks.direct.my_anymal_quadruped:MyAnymalEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": MyAnymalFlatEnvCfg,
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:MyAnymalFlatPPORunnerCfg",
+        "env_cfg_entry_point": "isaaclab_tasks.direct.my_anymal_quadruped:MyAnymalFlatEnvCfg",
+        # RSL-RL (sadece PPO)
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:AnymalCFlatPPORunnerCfg",
+        # skrl (PPO ve SAC)
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
+        "skrl_sac_cfg_entry_point": f"{agents.__name__}:skrl_sac_cfg.yaml",
+        # Stable-Baselines3
+        "sb3_cfg_entry_point": f"{agents.__name__}:sb3_ppo_cfg.yaml",
     },
 )
 
 gym.register(
-    id="Isaac-MyAnymal-Rough-v0",
-    entry_point="isaaclab_tasks.direct.my_anymal_quadruped.my_anymal_env:MyAnymalEnv",
+    id="Isaac-Velocity-Flat-Anymal-C-Direct-v0",
+    entry_point=f"{__name__}.anymal_c_env:AnymalCEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": MyAnymalRoughEnvCfg,
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:MyAnymalRoughPPORunnerCfg",
+        "env_cfg_entry_point": f"{__name__}.anymal_c_env_cfg:AnymalCFlatEnvCfg",
+        "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_flat_ppo_cfg.yaml",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:AnymalCFlatPPORunnerCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_flat_ppo_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="Isaac-Velocity-Rough-Anymal-C-Direct-v0",
+    entry_point=f"{__name__}.anymal_c_env:AnymalCEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.anymal_c_env_cfg:AnymalCRoughEnvCfg",
+        "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_rough_ppo_cfg.yaml",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:AnymalCRoughPPORunnerCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_rough_ppo_cfg.yaml",
     },
 )
