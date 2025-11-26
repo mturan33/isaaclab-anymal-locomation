@@ -34,6 +34,7 @@ class MyAnymalEnv(DirectRLEnv):
         self._episode_sums = {
             key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
             for key in [
+                "forward_bonus",
                 "track_lin_vel_xy_exp",
                 "track_ang_vel_z_exp",
                 "lin_vel_z_l2",
