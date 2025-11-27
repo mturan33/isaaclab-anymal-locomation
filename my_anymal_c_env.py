@@ -1,6 +1,8 @@
 # Copyright (c) 2022-2025, The Isaac Lab Project Developers
 # All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
+#
+# MODIFIED: Added velocity command visualization arrows
 
 from __future__ import annotations
 
@@ -12,7 +14,43 @@ from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sensors import ContactSensor, RayCaster
 
+# ============ MARKER IMPORTS ============
+from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
+from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+import isaaclab.utils.math as math_utils
+# ========================================
+
 from .my_anymal_env_cfg import MyAnymalFlatEnvCfg, MyAnymalRoughEnvCfg
+
+
+def define_velocity_markers() -> VisualizationMarkersCfg:
+    """Define markers for velocity command visualization.
+
+    - Red arrow: Commanded velocity direction (where robot should go)
+    - Green arrow: Actual velocity direction (where robot is going)
+    - Cyan arrow: Robot forward direction (heading)
+    """
+    marker_cfg = VisualizationMarkersCfg(
+        prim_path="/Visuals/VelocityMarkers",
+        markers={
+            "velocity_command": sim_utils.UsdFileCfg(
+                usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/UIElements/arrow_x.usd",
+                scale=(0.5, 0.5, 1.0),  # Longer arrow for visibility
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),  # Red
+            ),
+            "velocity_actual": sim_utils.UsdFileCfg(
+                usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/UIElements/arrow_x.usd",
+                scale=(0.4, 0.4, 0.8),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)),  # Green
+            ),
+            "heading": sim_utils.UsdFileCfg(
+                usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/UIElements/arrow_x.usd",
+                scale=(0.3, 0.3, 0.6),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 1.0)),  # Cyan
+            ),
+        },
+    )
+    return marker_cfg
 
 
 class MyAnymalEnv(DirectRLEnv):
@@ -29,6 +67,13 @@ class MyAnymalEnv(DirectRLEnv):
 
         # X/Y linear velocity and yaw angular velocity commands
         self._commands = torch.zeros(self.num_envs, 3, device=self.device)
+
+        # ============ MARKER SETUP ============
+        # Marker offset above robot (z direction)
+        self._marker_offset = torch.tensor([0.0, 0.0, 0.7], device=self.device)
+        # Up vector for quaternion calculations
+        self._up_vec = torch.tensor([0.0, 0.0, 1.0], device=self.device).repeat(self.num_envs, 1)
+        # ======================================
 
         # Logging
         self._episode_sums = {
@@ -78,6 +123,10 @@ class MyAnymalEnv(DirectRLEnv):
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
 
+        # ============ CREATE VISUALIZATION MARKERS ============
+        self._velocity_markers = VisualizationMarkers(define_velocity_markers())
+        # ======================================================
+
     def _pre_physics_step(self, actions: torch.Tensor):
         self._actions = actions.clone()
         self._processed_actions = self.cfg.action_scale * self._actions + self._robot.data.default_joint_pos
@@ -113,7 +162,76 @@ class MyAnymalEnv(DirectRLEnv):
             dim=-1,
         )
         observations = {"policy": obs}
+
+        # ============ VISUALIZE MARKERS ============
+        self._visualize_velocity_markers()
+        # ===========================================
+
         return observations
+
+    def _visualize_velocity_markers(self):
+        """Visualize velocity command and actual velocity as arrows above each robot."""
+        # Get robot base positions in world frame
+        base_pos_w = self._robot.data.root_pos_w  # (num_envs, 3)
+        base_quat_w = self._robot.data.root_quat_w  # (num_envs, 4) - robot orientation
+
+        # Offset markers above the robot
+        marker_pos = base_pos_w + self._marker_offset
+
+        # 1. COMMAND VELOCITY ARROW (Red) - where robot should go
+        # Commands are in body frame: [vx, vy, yaw_rate]
+        cmd_vx = self._commands[:, 0]  # Forward velocity
+        cmd_vy = self._commands[:, 1]  # Lateral velocity
+
+        # Calculate yaw angle from velocity command in body frame
+        cmd_yaw_body = torch.atan2(cmd_vy, cmd_vx)  # (num_envs,)
+
+        # Get robot yaw from quaternion (extract yaw component)
+        # Quaternion format: (w, x, y, z)
+        qw, qx, qy, qz = base_quat_w[:, 0], base_quat_w[:, 1], base_quat_w[:, 2], base_quat_w[:, 3]
+        robot_yaw = torch.atan2(2.0 * (qw * qz + qx * qy), 1.0 - 2.0 * (qy * qy + qz * qz))
+
+        # Command direction in world frame = robot_yaw + cmd_yaw_body
+        cmd_yaw_world = robot_yaw + cmd_yaw_body
+        cmd_quat_world = math_utils.quat_from_angle_axis(cmd_yaw_world, self._up_vec)
+
+        # 2. ACTUAL VELOCITY ARROW (Green) - where robot is actually going
+        actual_vel_w = self._robot.data.root_lin_vel_w[:, :2]  # World frame velocity
+        actual_vx = actual_vel_w[:, 0]
+        actual_vy = actual_vel_w[:, 1]
+        actual_yaw = torch.atan2(actual_vy, actual_vx)
+        actual_quat = math_utils.quat_from_angle_axis(actual_yaw, self._up_vec)
+
+        # 3. HEADING ARROW (Cyan) - robot forward direction
+        heading_quat = base_quat_w  # Robot's current orientation
+
+        # Stack all marker positions (3 markers per robot)
+        # Order: command, actual, heading
+        offset_actual = torch.tensor([0.0, 0.0, 0.1], device=self.device)
+        offset_heading = torch.tensor([0.0, 0.0, 0.2], device=self.device)
+
+        all_positions = torch.cat([
+            marker_pos,  # Command arrow position
+            marker_pos + offset_actual,  # Actual (slightly higher)
+            marker_pos + offset_heading,  # Heading (highest)
+        ], dim=0)  # (num_envs * 3, 3)
+
+        # Stack all orientations
+        all_orientations = torch.cat([
+            cmd_quat_world,
+            actual_quat,
+            heading_quat,
+        ], dim=0)  # (num_envs * 3, 4)
+
+        # Create marker indices: 0=command(red), 1=actual(green), 2=heading(cyan)
+        marker_indices = torch.cat([
+            torch.zeros(self.num_envs, dtype=torch.long, device=self.device),  # Command markers
+            torch.ones(self.num_envs, dtype=torch.long, device=self.device),  # Actual markers
+            torch.full((self.num_envs,), 2, dtype=torch.long, device=self.device),  # Heading markers
+        ], dim=0)
+
+        # Visualize all markers
+        self._velocity_markers.visualize(all_positions, all_orientations, marker_indices)
 
     def _get_rewards(self) -> torch.Tensor:
         # linear velocity tracking
@@ -162,7 +280,7 @@ class MyAnymalEnv(DirectRLEnv):
         forward_bonus = torch.clamp(forward_vel, min=0.0, max=2.0) * 0.5
 
         rewards = {
-            "forward_bonus" : forward_bonus * self.step_dt,
+            "forward_bonus": forward_bonus * self.step_dt,
             "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
             "track_ang_vel_z_exp": yaw_rate_error_mapped * self.cfg.yaw_rate_reward_scale * self.step_dt,
             "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
